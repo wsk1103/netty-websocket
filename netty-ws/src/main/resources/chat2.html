@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>客户端</title>
+</head>
+<body>
+<form onsubmit="return false">
+
+  <input type="text" value="userName" id="userName" name="message"/>
+  <input type="text" value="10086" id="roomId" name="message"/>
+  <input type="text" value="10087" id="toRoomId" name="message"/>
+  <button value="10086" id="go" name="message" onclick="go9();">连接</button>
+  <textarea name="message" id="message" style="width: 400px;height: 200px"></textarea>
+
+  <input type="button" value="发送数据" onclick="send();">
+
+  <h3>回复消息：</h3>
+
+  <textarea id="responseText" style="width: 400px;height: 300px;"></textarea>
+
+  <input type="button" onclick="javascript:document.getElementById('responseText').value=''" value="清空数据">
+</form>
+<script src="js/protobuf.js"></script>
+<!--<script src="https://cdn.rawgit.com/dcodeIO/protobuf.js/6.11.2/dist/protobuf.js"></script>-->
+<script type="text/javascript">
+    var socket;
+    var roomId;
+    var user = document.getElementById("userName");
+    user.value = (new Date()).valueOf();;
+    function go9() {
+      if (socket != null) {return;}
+      roomId = document.getElementById("roomId").value;
+      //如果浏览器支持WebSocket
+      if (window.WebSocket) {
+          //参数就是与服务器连接的地址
+          var ur = "ws://localhost:8081/websocket?roomId=" + roomId;
+          socket = new WebSocket(ur);
+          //客户端收到服务器消息的时候就会执行这个回调方法
+          socket.onmessage = function (event) {
+              var ta = document.getElementById("responseText");
+              // 解码
+              console.log('----' + event.data);
+              console.log(event.data);
+              responseUserDecoder({
+                  data: event.data,
+                  success: function (responseUser) {
+                      var temp = responseUser.response.data;
+                      console.log(temp)
+                      var json = JSON.parse(temp);
+                      var content = "userName: " + json.userName +
+                          ", message: " + json.msg;
+                      ta.value = ta.value + "\n" + content;
+                  },
+                  fail: function (err) {
+                      console.log(err);
+                  },
+                  complete: function () {
+                      console.log("解码全部完成")
+                  }
+              })
+          }
+          //连接建立的回调函数
+          socket.onopen = function (event) {
+              var ta = document.getElementById("responseText");
+              ta.value = "连接开启";
+          }
+          //连接断掉的回调函数
+          socket.onclose = function (event) {
+              var ta = document.getElementById("responseText");
+              ta.value = ta.value + "\n" + "连接关闭";
+          }
+      } else {
+          alert("浏览器不支持WebSocket！");
+      }
+    }
+    //发送数据
+    function send() {
+        var message = document.getElementById("message").value;
+        var toRoomId = document.getElementById("toRoomId").value;
+        if (!window.WebSocket) {
+            return;
+        }
+        // socket.binaryType = "arraybuffer";
+        // 判断是否开启
+        if (socket.readyState !== WebSocket.OPEN) {
+            alert("连接没有开启");
+            return;
+        }
+
+        var temp = {
+          userName: user.value,
+          roomId: toRoomId,
+          msg : message
+        }
+        var tt = JSON.stringify(temp);
+        var request = {
+            code: 200,
+            data: tt
+        }
+
+        var data = {
+            messageType: 1,
+            request: request,
+            sequence: '123123'
+        };
+        requestUserEncoder({
+            data: data,
+            success: function (buffer) {
+                console.log("编码成功");
+                socket.send(buffer);
+            },
+            fail: function (err) {
+                console.log(err);
+            },
+            complete: function () {
+                console.log("编码全部完成")
+            }
+        });
+    }
+    /**
+     * 发送的消息编码成 protobuf
+     */
+    function requestUserEncoder(obj) {
+        var data = obj.data;
+        var success = obj.success; // 成功的回调
+        var fail = obj.fail; // 失败的回调
+        var complete = obj.complete; // 成功或者失败都会回调
+        protobuf.load("../proto/message.proto", function (err, root) {
+            if (err) {
+                if (typeof fail === "function") {
+                    fail(err)
+                }
+                if (typeof complete === "function") {
+                    complete()
+                }
+                return;
+            }
+            // Obtain a message type
+            var MyMessage = root.lookupType("com.ws.proto.Message");
+            // Exemplary payload
+            var payload = data;
+            // Verify the payload if necessary (i.e. when possibly incomplete or invalid)
+            var errMsg = MyMessage.verify(payload);
+            if (errMsg) {
+                if (typeof fail === "function") {
+                    fail(errMsg)
+                }
+                if (typeof complete === "function") {
+                    complete()
+                }
+                return;
+            }
+            // Create a new message
+            var message = MyMessage.create(payload); // or use .fromObject if conversion is necessary
+            // Encode a message to an Uint8Array (browser) or Buffer (node)
+            var buffer = MyMessage.encode(message).finish();
+            if (typeof success === "function") {
+                success(buffer)
+            }
+            if (typeof complete === "function") {
+                complete()
+            }
+        });
+    }
+    /**
+     * 接收到服务器二进制流的消息进行解码
+     */
+    function responseUserDecoder(obj) {
+        console.log(obj);
+        var data = obj.data;
+        var success = obj.success; // 成功的回调
+        var fail = obj.fail; // 失败的回调
+        var complete = obj.complete; // 成功或者失败都会回调
+        protobuf.load("../proto/message.proto", function (err, root) {
+            if (err) {
+                if (typeof fail === "function") {
+                    fail(err)
+                }
+                if (typeof complete === "function") {
+                    complete()
+                }
+                return;
+            }
+            // Obtain a message type
+            var MyMessage = root.lookupType("com.ws.proto.Message");
+            var reader = new FileReader();
+            reader.readAsArrayBuffer(data);
+            reader.onload = function (e) {
+                var buf = new Uint8Array(reader.result);
+                var responseUser = MyMessage.decode(buf);
+                console.log(responseUser)
+                if (typeof success === "function") {
+                    success(responseUser)
+                }
+                if (typeof complete === "function") {
+                    complete()
+                }
+            }
+        });
+    }
+</script>
+
+</body>
+</html>

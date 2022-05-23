@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package com.ws.proto;
+
+option java_package = "com.ws.proto";
+
+option java_outer_classname = "MessageProto";
+
+message Message {
+  MessageType messageType = 1;
+  string sequence = 2;
+  Request request = 3;
+
+  Response response = 4;
+  Notification notification = 5;
+
+  enum MessageType {
+    CHAT = 0;
+
+    ACTION = 1;
+  }
+
+  message Request {
+    int32 code = 1;
+    string data = 2;
+  }
+
+  message Response {
+    int32 code = 1;
+    string data = 2;
+  }
+
+  message Notification {
+    int32 code = 1;
+    string data = 2;
+  }
+
+}
+
